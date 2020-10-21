@@ -1,7 +1,7 @@
 # iptv
 Asuswrt-Merlin router IPTV transmission access script
 
-华硕固件路由器IPTV传输接入脚本
+华硕改版固件路由器IPTV传输接入脚本
 
 <strong>主要功能</strong>
 <ul><li>支持路由器单/双线路时IPTV接入。</li>
@@ -12,5 +12,4 @@ Asuswrt-Merlin router IPTV transmission access script
 <strong>安装及使用方法</strong>
 <ul>IPTV之路由器单双线接入方式的超简单实现
 https://koolshare.cn/thread-178464-1-1.html
-(出处: KoolShare)
-</ul>
+(出处: KoolShare)</ul>
