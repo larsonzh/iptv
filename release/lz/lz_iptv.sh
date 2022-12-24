@@ -54,7 +54,7 @@ EOF
 
 
 ## 版本号
-LZ_VERSION=v1.1.1
+LZ_VERSION=v1.1.2
 
 ## 项目文件部署路径
 PATH_BASE=/jffs/scripts
