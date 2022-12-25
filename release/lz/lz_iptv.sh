@@ -867,7 +867,6 @@ ___main() {
                 ## 返回值：无
                 lz_add_src_to_dst_sets_ip_rules "${ip_list_item}" "/tmp/lz_iptv_ip_addr.lst" "${LZ_IPTV}" "${IP_RULE_PRIO_IPTV}"
             done
-
             ## 获取IPv4网址/网段地址列表文件中的列表数据
             ## 输入项：
             ##     $1--IPv4网址/网段地址列表全路径文件名
