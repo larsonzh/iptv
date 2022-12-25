@@ -93,8 +93,14 @@ IP_RULE_PRIO_IPTV="888"
 ## 策略规则基础优先级--25000（IP_RULE_PRIO）
 IP_RULE_PRIO="25000"
 
+## 负载均衡用路由器内网网段数据集合
+BALANCE_IP_SET="lz_iptv_balance_ipsets"
+
 ## 系统事件记录文件
 SYSLOG="/tmp/syslog.log"
+
+## iptables --match-set针对不同硬件类型选项设置的操作符宏变量
+MATCH_SET='--match-set'
 
 HAMMER="$( echo "${1}" | tr '[:A-Z:]' '[:a-z:]' )"
 STOP_RUN="stop"
@@ -141,12 +147,41 @@ unset_lock() {
     [ -f "${LOCK_FILE}" ] && flock -u "${LOCK_FILE_ID}" > /dev/null 2>&1
 }
 
+get_match_set() {
+    case $( uname -m ) in
+        armv7l)
+            MATCH_SET='--match-set'
+        ;;
+        mips)
+            MATCH_SET='--set'
+        ;;
+        aarch64)
+            MATCH_SET='--match-set'
+        ;;
+        *)
+            MATCH_SET='--match-set'
+        ;;
+    esac
+}
+
 ## 处理系统负载均衡分流策略规则函数
 ## 输入项：
 ##     $1--规则优先级（150--ASUS原始；$(( IP_RULE_PRIO + 1 ))--脚本原定义）
 ##     全局常量
 ## 返回值：无
 lz_sys_load_balance_control() {
+    ## 删除路由前mangle表balance负载均衡规则链中脚本曾经插入的规则（避免系统原生负载均衡影响分流）
+    if iptables -t mangle -L PREROUTING 2> /dev/null | grep -q balance; then
+        local local_number="$( iptables -t mangle -L balance -v -n --line-numbers 2> /dev/null \
+            | grep -w "${BALANCE_IP_SET}" \
+            | cut -d " " -f 1 | grep -o '^[0-9]*$' | sort -nr )"
+        local local_item_no=
+        for local_item_no in ${local_number}
+        do
+            iptables -t mangle -D balance "${local_item_no}" > /dev/null 2>&1
+        done
+    fi
+    ipset -q destroy "${BALANCE_IP_SET}"
     ## 调整策略规则路由数据库中负载均衡策略规则条目的优先级
     ## a.对固件系统中第一WAN口的负载均衡分流策略
     local local_sys_load_balance_wan0_exist="$( ip rule show | grep -ci "from all fwmark 0x80000000/0xf0000000" )"
@@ -159,7 +194,6 @@ lz_sys_load_balance_control() {
         ip rule add from all fwmark "0x80000000/0xf0000000" table "${WAN0}" prio "${1}" > /dev/null 2>&1
         ip route flush cache > /dev/null 2>&1
     fi
-
     ## b.对固件系统中第二WAN口的负载均衡分流策略
     local local_sys_load_balance_wan1_exist="$( ip rule show | grep -ci "from all fwmark 0x90000000/0xf0000000" )"
     if [ "${local_sys_load_balance_wan1_exist}" -gt "0" ]; then
@@ -473,7 +507,7 @@ lz_create_event_interface() {
 #!/bin/sh
 EOF_INTERFACE
     fi
-    [ ! -f "${PATH_BOOTLOADER}/${1}" ] && return 1
+    [ ! -f "${PATH_BOOTLOADER}/${1}" ] && return "1"
     if ! grep -m 1 '^.*$' "${PATH_BOOTLOADER}/${1}" | grep -q "#!/bin/sh"; then
         if [ "$( grep -c '^.*$' "${PATH_BOOTLOADER}/${1}" )" = "0" ]; then
             echo "#!/bin/sh" >> "${PATH_BOOTLOADER}/${1}"
@@ -491,8 +525,8 @@ EOF_INTERFACE
         sed -i "\$a ${2}/${3} # Added by LZ" "${PATH_BOOTLOADER}/${1}"
     fi
     chmod +x "${PATH_BOOTLOADER}/${1}"
-    ! grep -q "${2}/${3}" "${PATH_BOOTLOADER}/${1}" && return 1
-    return 0
+    ! grep -q "${2}/${3}" "${PATH_BOOTLOADER}/${1}" && return "1"
+    return "0"
 }
 
 ## 创建firewall-start启动文件并添加脚本引导项
@@ -628,7 +662,19 @@ lz_djust_igmpproxy_parameters() {
     fi
 }
 
-main() {
+## ipv4网络掩码转换至掩码位
+## 输入项：
+##     $1--ipv4网络地址掩码
+## 返回值：
+##     0~32--ipv4网络地址掩码位数
+lz_netmask2cdr() {
+    local x="${1##*255.}"
+    set -- "0^^^128^192^224^240^248^252^254^" "$(( (${#1} - ${#x})*2 ))" "${x%%.*}"
+    x="${1%%"${3}"*}"
+    echo "$(( ${2} + (${#x}/4) ))"
+}
+
+___main() {
     ## 处理系统负载均衡分流策略规则
     ## 输入项：
     ##     $1--规则优先级（150--ASUS原始；$(( IP_RULE_PRIO + 1 ))--脚本原定义）
@@ -647,11 +693,11 @@ main() {
     ##     $1--是否显示执行结果（1--显示；其它符号--禁止显示）
     ## 返回值：无
     local show_result="${STOP_RUN}"
-    [ "${1}" = "${show_result}" ] && show_result="1"
+    [ "${HAMMER}" = "${show_result}" ] && show_result="1"
     lz_restore_sys_iptv_services "${show_result}"
 
     ## 判断是否停止脚本提供的IPTV服务
-    if [ "${1}" = "${STOP_RUN}" ]; then
+    if [ "${HAMMER}" = "${STOP_RUN}" ]; then
         ## 清除firewall-start中脚本引导项
         lz_clear_firewall_start_command
 
@@ -665,6 +711,13 @@ main() {
 
         ## 停止服务并退出
         echo "$(lzdate)" [$$]: "LZ IPTV service support provided by the script has finished." | tee -ai "${SYSLOG}" 2> /dev/null
+        return
+    fi
+
+    if [ -f "${PATH_BOOTLOADER}/${BOOTLOADER_NAME}" ] && grep -q "^[^#]*lz_rule[\.]sh" "${PATH_BOOTLOADER}/${BOOTLOADER_NAME}"; then
+        ## 清除firewall-start中脚本引导项
+        lz_clear_firewall_start_command
+        echo "$(lzdate)" [$$]: "Please uninstall the lz_rule project before running it." | tee -ai "${SYSLOG}" 2> /dev/null
         return
     fi
 
@@ -871,11 +924,22 @@ main() {
         if ip route show table "${LZ_IPTV}" | grep -q "default" && [ "$( ip rule show | grep -c "^${IP_RULE_PRIO_IPTV}:" )" -gt "0" ]; then
             if ip route show | grep -q nexthop; then
                 local route_local_ip="$( /sbin/ifconfig "br0" | awk 'NR==2 {print $2}' | awk -F: '{print $2}' )"
+                local route_local_ip_mask="$( /sbin/ifconfig "br0" | awk 'NR==2 {print $4}' | awk -F: '{print $2}' )"
+                route_local_ip_mask="$( echo "${route_local_ip_mask}" | grep -E "([0-9]{1,3}[\.]){3}[0-9]{1,3}" )"
+                local local_ipv4_cidr_mask="$( lz_netmask2cdr "${route_local_ip_mask}" )"
                 local internet_wan_id="${WAN0}"
                 [ "${internet_wan}" != "1" ] && internet_wan_id="${WAN1}"
                 ip rule add from all to "${route_local_ip}" table "${internet_wan_id}" prio "$(( IP_RULE_PRIO - 1 ))" > /dev/null 2>&1
                 ip rule add from "${route_local_ip}" table "${internet_wan_id}" prio "$(( IP_RULE_PRIO - 1 ))" > /dev/null 2>&1
                 ip rule add from all table "${internet_wan_id}" prio "${IP_RULE_PRIO}" > /dev/null 2>&1
+                if iptables -t mangle -L PREROUTING 2> /dev/null | grep -q "balance"; then
+                    ipset -q create "${BALANCE_IP_SET}" hash:net #--hashsize 1024 mexleme 65536
+                    ipset -q flush "${BALANCE_IP_SET}"
+                    ipset -q add "${BALANCE_IP_SET}" "${route_local_ip%.*}.0/${local_ipv4_cidr_mask}"
+                    get_match_set
+                    eval "iptables -t mangle -I balance -m set ${MATCH_SET} ${BALANCE_IP_SET} src -j RETURN > /dev/null 2>&1"
+                    ipset -q destroy "${BALANCE_IP_SET}"
+                fi
             fi
             echo "$(lzdate)" [$$]: "IPTV STB can be connected to ${iptv_interface_id} interface for use." | tee -ai "${SYSLOG}" 2> /dev/null
         fi
@@ -909,7 +973,7 @@ main() {
 while true
 do
     set_lock || break
-    main "${HAMMER}"
+    ___main
     break
 done
 
