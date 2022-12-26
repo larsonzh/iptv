@@ -13,6 +13,3 @@ Asuswrt-Merlin router IPTV transmission access script
 <strong>安装及使用方法</strong>
 <ul>IPTV之路由器单双线接入方式的超简单实现
 https://github.com/larsonzh/iptv/blob/master/IPTV%E4%B9%8B%E8%B7%AF%E7%94%B1%E5%99%A8%E5%8D%95%E5%8F%8C%E7%BA%BF%E6%8E%A5%E5%85%A5%E6%96%B9%E5%BC%8F%E7%9A%84%E8%B6%85%E7%AE%80%E5%8D%95%E5%AE%9E%E7%8E%B0%E6%95%99%E7%A8%8B.pdf</ul>
-
-IPTV之路由器单双线接入方式的超简单实现
-https://github.com/larsonzh/iptv/blob/master/IPTV%E4%B9%8B%E8%B7%AF%E7%94%B1%E5%99%A8%E5%8D%95%E5%8F%8C%E7%BA%BF%E6%8E%A5%E5%85%A5%E6%96%B9%E5%BC%8F%E7%9A%84%E8%B6%85%E7%AE%80%E5%8D%95%E5%AE%9E%E7%8E%B0%E6%95%99%E7%A8%8B.pdf
