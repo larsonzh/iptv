@@ -1,5 +1,5 @@
 #!/bin/sh
-# lz_iptv.sh v2.0.0
+# lz_iptv.sh v2.0.1
 # By LZ 妙妙呜 (larsonzhang@gmail.com)
 
 # shellcheck disable=SC3023
@@ -59,7 +59,7 @@ EOF
 
 
 ## 版本号
-LZ_VERSION=v2.0.0
+LZ_VERSION=v2.0.1
 
 # 项目文件部署路径
 PATH_LZ="${0%/*}"
