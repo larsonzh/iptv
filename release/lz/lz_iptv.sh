@@ -111,7 +111,7 @@ LOCK_FILE="${PATH_LOCK}/lz_rule.lock"
 LOCK_FILE_ID=555
 INSTANCE_LIST="${PATH_LOCK}/lz_iptv_instance.lock"
 
-lzdate() { eval echo "$( date +"%F %T" )"; }
+lzdate() { date +"%F %T"; }
 
 set_lock() {
     [ "${HAMMER}" = "${FORCED_UNLOCKING}" ] && return "1"
