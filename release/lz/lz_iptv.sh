@@ -1,5 +1,5 @@
 #!/bin/sh
-# lz_iptv.sh v2.0.1
+# lz_iptv.sh v2.0.2
 # By LZ 妙妙呜 (larsonzhang@gmail.com)
 
 # shellcheck disable=SC3023
@@ -59,7 +59,7 @@ EOF
 
 
 ## 版本号
-LZ_VERSION=v2.0.1
+LZ_VERSION=v2.0.2
 
 # 项目文件部署路径
 PATH_LZ="${0%/*}"
@@ -680,7 +680,7 @@ ___main() {
     ##     $1--规则优先级（150--ASUS原始；$(( IP_RULE_PRIO + 1 ))--脚本原定义）
     ##     全局常量
     ## 返回值：无
-    lz_sys_load_balance_control "$(( IP_RULE_PRIO + 1 ))"
+    lz_sys_load_balance_control "150"
 
     ## 清除系统策略路由库中已有IPTV规则
     lz_del_iptv_rule
@@ -922,22 +922,32 @@ ___main() {
 
         if ip route show table "${LZ_IPTV}" | grep -q "default" && [ "$( ip rule show | grep -c "^${IP_RULE_PRIO_IPTV}:" )" -gt "0" ]; then
             if ip route show | grep -q nexthop; then
-                local route_local_ip="$( /sbin/ifconfig "br0" | awk 'NR==2 {print $2}' | awk -F: '{print $2}' )"
-                local route_local_ip_mask="$( /sbin/ifconfig "br0" | awk 'NR==2 {print $4}' | awk -F: '{print $2}' )"
-                route_local_ip_mask="$( echo "${route_local_ip_mask}" | grep -E "([0-9]{1,3}[\.]){3}[0-9]{1,3}" )"
-                local local_ipv4_cidr_mask="$( lz_netmask2cdr "${route_local_ip_mask}" )"
-                local internet_wan_id="${WAN0}"
-                [ "${internet_wan}" != "1" ] && internet_wan_id="${WAN1}"
-                ip rule add from all to "${route_local_ip}" table "${internet_wan_id}" prio "$(( IP_RULE_PRIO - 1 ))" > /dev/null 2>&1
-                ip rule add from "${route_local_ip}" table "${internet_wan_id}" prio "$(( IP_RULE_PRIO - 1 ))" > /dev/null 2>&1
-                ip rule add from all table "${internet_wan_id}" prio "${IP_RULE_PRIO}" > /dev/null 2>&1
-                if iptables -t mangle -L PREROUTING 2> /dev/null | grep -q "balance"; then
-                    ipset -q create "${BALANCE_IP_SET}" hash:net #--hashsize 1024 mexleme 65536
-                    ipset -q flush "${BALANCE_IP_SET}"
-                    ipset -q add "${BALANCE_IP_SET}" "${route_local_ip%.*}.0/${local_ipv4_cidr_mask}"
-                    get_match_set
-                    eval "iptables -t mangle -I balance -m set ${MATCH_SET} ${BALANCE_IP_SET} src -j RETURN > /dev/null 2>&1"
-                    ipset -q destroy "${BALANCE_IP_SET}"
+                local route_local_ip="$( /sbin/ifconfig "br0" | awk 'NR==2 {print $2}' | awk -F: '{print $2}' | grep -E "([0-9]{1,3}[\.]){3}[0-9]{1,3}" )"
+                local local_ipv4_cidr_mask="$( lz_netmask2cdr "$( /sbin/ifconfig "br0" | awk 'NR==2 {print $4}' | awk -F: '{print $2}' | grep -E "([0-9]{1,3}[\.]){3}[0-9]{1,3}" )" )"
+                if [ -n "${route_local_ip}" ]; then
+                    local internet_wan_id="${WAN0}"
+                    [ "${internet_wan}" != "1" ] && internet_wan_id="${WAN1}"
+                    ip rule add from all to "${route_local_ip}" table "${internet_wan_id}" prio "$(( IP_RULE_PRIO - 1 ))" > /dev/null 2>&1
+                    ip rule add from "${route_local_ip}" table "${internet_wan_id}" prio "$(( IP_RULE_PRIO - 1 ))" > /dev/null 2>&1
+                    local route_local_subnet=""
+                    [ -n "${local_ipv4_cidr_mask}" ] && route_local_subnet="${route_local_ip%.*}.0/${local_ipv4_cidr_mask}"
+                    if [ -n "${route_local_subnet}" ]; then
+                        ip rule add from "${route_local_subnet}" table "${internet_wan_id}" prio "${IP_RULE_PRIO}" > /dev/null 2>&1
+                    else
+                        ip rule add from all table "${internet_wan_id}" prio "${IP_RULE_PRIO}" > /dev/null 2>&1
+                    fi
+                    if iptables -t mangle -L PREROUTING 2> /dev/null | grep -q "balance"; then
+                        ipset -q create "${BALANCE_IP_SET}" hash:net #--hashsize 1024 mexleme 65536
+                        ipset -q flush "${BALANCE_IP_SET}"
+                        if [ -n "${route_local_subnet}" ]; then
+                            ipset -q add "${BALANCE_IP_SET}" "${route_local_subnet}"
+                        else
+                            ipset -q add "${BALANCE_IP_SET}" "${route_local_ip}"
+                        fi
+                        get_match_set
+                        eval "iptables -t mangle -I balance -m set ${MATCH_SET} ${BALANCE_IP_SET} src -j RETURN > /dev/null 2>&1"
+                        ipset -q destroy "${BALANCE_IP_SET}"
+                    fi
                 fi
             fi
             echo "$(lzdate)" [$$]: "IPTV STB can be connected to ${iptv_interface_id} interface for use." | tee -ai "${SYSLOG}" 2> /dev/null
